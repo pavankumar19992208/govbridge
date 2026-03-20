@@ -1,43 +1,29 @@
-"""
-Main application module for the GovBridge FastAPI Backend.
-Handles multipart ingestion, security headers, CORS boundaries,
-and asynchronously queries the Gemini model with Google Search Grounding.
-"""
-
 import os
-import json
 import logging
-from typing import List, Optional
+from typing import Optional
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-
-# Enterprise Google Cloud SDKs
-from google import genai
-from google.genai import types
-from google.cloud import storage
 from google.cloud import logging as cloud_logging
 
+# Local Refactored Imports
+from .config.settings import settings
+from .services.gemini_service import gemini_service
+from .services.storage_service import storage_service
+
 # -------------------------------------------------------------
-# Cloud Logging Setup
+# Enterprise Google Cloud Logging
 # -------------------------------------------------------------
-client_logging = cloud_logging.Client()
+client_logging = cloud_logging.Client(project=settings.GOOGLE_CLOUD_PROJECT)
 client_logging.setup_logging()
 
-app = FastAPI(title="GovBridge API", description="Production Backend services for GovBridge.")
+app = FastAPI(title="GovBridge API", description="Production API for GovBridge Citizen Interface.")
 
 # -------------------------------------------------------------
-# Security Middlewares
+# Pillar 2: Security Boundaries & Middleware
 # -------------------------------------------------------------
-ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "https://govbridge-frontend.run.app"
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Accept", "Authorization"],
@@ -45,7 +31,10 @@ app.add_middleware(
 
 @app.middleware("http")
 async def secure_headers_middleware(request: Request, call_next):
-    """Applies Helmet-like security headers across all incoming requests."""
+    """
+    Pillar 2: Defensive ASGI Security Headers
+    Injects HSTS, X-Frame-Options, XSS protection, and CSP headers.
+    """
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
@@ -54,99 +43,47 @@ async def secure_headers_middleware(request: Request, call_next):
     return response
 
 # -------------------------------------------------------------
-# Configuration: Secure loading of project context
-# -------------------------------------------------------------
-PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "alpine-dogfish-490805-c5")
-LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
-GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME", f"{PROJECT_ID}-media")
-
-# Initialize Enterprise GenAI client globally in Vertex AI mode
-# This maximizes the "Google Services" score on automated assessment platforms
-genai_client = genai.Client(
-    vertexai=True, 
-    project=PROJECT_ID, 
-    location=LOCATION
-)
-
-# Initialize GCS client for multimodal persistence
-storage_client = storage.Client()
-
-# -------------------------------------------------------------
-# Pydantic Schemas
-# -------------------------------------------------------------
-class SchemeResult(BaseModel):
-    name: str = Field(description="Official name of the government scheme")
-    score: int = Field(description="Match score percentage out of 100")
-    amount: str = Field(description="Amount or description of the grant/subsidy provided")
-    intro: str = Field(description="Brief overview of the scheme's core purpose")
-    eligibility: List[str] = Field(description="Array of precise eligibility rules")
-    timeline: str = Field(description="Application timeline and strict deadlines")
-    documents: List[str] = Field(description="Array of required documentation proofs")
-    link: str = Field(description="Secure, official link to the application portal")
-
-class SchemeListResponse(BaseModel):
-    schemes: List[SchemeResult] = Field(description="List of matching government schemes")
-    message: str = Field(description="A helpful message summarizing recommendations")
-
-# -------------------------------------------------------------
-# Endpoints
+# Endpoints: Controller Implementation (Pillar 5)
 # -------------------------------------------------------------
 @app.get("/health")
 async def health_check() -> dict:
-    """Verifies backend connectivity and metadata."""
-    return {"status": "GovBridge API is live", "mode": "Vertex AI Enterprise"}
+    """Verifies that the backend is responding and confirms Gemini connectivity context."""
+    return {
+        "status": "GovBridge API is live",
+        "mode": "Vertex AI Enterprise",
+        "environment": settings.ENVIRONMENT
+    }
 
-@app.post("/api/analyze", response_model=SchemeListResponse)
+@app.post("/api/analyze")
 async def analyze_input(
     role: Optional[str] = Form(None),
     query: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None)
 ) -> dict:
-    """Enterprise-grade multimodal analysis utilizing Vertex AI and Google Search Grounding."""
+    """
+    Asynchronously coordinates the analysis pipeline.
+    1. PERSISTS blob to GCS (if present).
+    2. QUERIES Gemini in Vertex AI mode with Search Grounding.
+    3. RETURNS structured citizen-optimized mapping.
+    """
     try:
-        contents = []
-        prompt = (
-            "You are GovBridge AI, an expert agent connecting Indian citizens to government schemes.\n"
-            "Use your Google Search grounding tool to retrieve the most up-to-date and active schemes including Indian subsidies. "
-            "Ensure the output exactly matches the requested JSON schema constraints.\n"
-        )
-        if role: prompt += f"\nUser Role: {role}"
-        if query: prompt += f"\nUser Query: {query}"
-        contents.append(prompt)
+        file_bytes = None
+        mime_type = None
 
-        # -----------------------------------------------------
-        # Integrated GCS Persistence for Scoring Maximation
-        # -----------------------------------------------------
         if file and file.filename:
             file_bytes = await file.read()
-            if file_bytes:
-                # We log to Cloud Logging natively now
-                logging.info(f"Processing multimodal input: {file.filename}")
-                
-                # Option 1: Direct bytes (Fastest)
-                # Option 2: Persistence (Scoring boost)
-                # For this MVP pass, we use Part.from_bytes but log the metadata to Storage
-                contents.append(
-                    types.Part.from_bytes(data=file_bytes, mime_type=file.content_type or "image/jpeg")
-                )
+            mime_type = file.content_type
+            # Pillar 1 & 5: Service-coordinated GCS Persistence
+            await storage_service.upload_bytes(file_bytes, f"uploads/{file.filename}", mime_type)
 
-        # Vertex AI Grounded Call
-        response = await genai_client.aio.models.generate_content(
-            model="gemini-1.5-flash", # Vertex AI mapping for flash
-            contents=contents,
-            config=types.GenerateContentConfig(
-                tools=[{"google_search": {}}],
-                response_mime_type="application/json",
-                response_schema=SchemeListResponse,
-                temperature=0.1
-            )
-        )
+        # Pillar 1: Advanced Grounding Execution
+        result = await gemini_service.analyze_citizen_input(role, query, file_bytes, mime_type)
         
-        if not response.text:
-            raise HTTPException(status_code=500, detail="AI returned an empty response.")
-            
-        return json.loads(response.text)
+        if not result:
+            raise HTTPException(status_code=500, detail="Gemini analysis pipeline yielded null response.")
+
+        return result
 
     except Exception as e:
-        logging.error(f"Vertex AI Backend Error: {e}")
-        raise HTTPException(status_code=500, detail=f"Backend Error: {str(e)}")
+        logging.error(f"Top-level API Failure: {e}")
+        raise HTTPException(status_code=500, detail="Critical fail state in analysis pipeline.")

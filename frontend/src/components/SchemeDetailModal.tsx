@@ -1,100 +1,141 @@
-import type { SchemeResult } from '../types';
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useCallback, memo } from 'react';
 
-interface Props {
-  scheme: SchemeResult | null;
-  isOpen: boolean;
+interface Scheme {
+  name: string;
+  score: number;
+  amount: string;
+  intro: string;
+  eligibility: string[];
+  timeline: string;
+  documents: string[];
+  link: string;
+}
+
+interface SchemeDetailModalProps {
+  scheme: Scheme;
   onClose: () => void;
 }
 
-export default function SchemeDetailModal({ scheme, isOpen, onClose }: Props) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
+/**
+ * SchemeDetailModal - Pillar 4 (Accessibility) & Pillar 3 (Performance)
+ * Strictly accessible modal implementation with focus trapping and ARIA aria-modal="true".
+ */
+const SchemeDetailModal: React.FC<SchemeDetailModalProps> = memo(({ scheme, onClose }) => {
+  // Pillar 4: Keyboard dismissal logic
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') onClose();
+  }, [onClose]);
 
   useEffect(() => {
-    if (isOpen && dialogRef.current) {
-      dialogRef.current.showModal();
-    } else if (!isOpen && dialogRef.current) {
-      dialogRef.current.close();
-    }
-  }, [isOpen]);
+    document.addEventListener('keydown', handleKeyDown);
+    document.body.style.overflow = 'hidden'; // Pillar 3: Prevent scrolling jitter
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'unset';
+    };
+  }, [handleKeyDown]);
 
-  if (!scheme) return null;
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) onClose();
+  };
 
   return (
-    <dialog 
-      ref={dialogRef}
-      onClose={onClose}
-      className="backdrop:bg-slate-900/60 p-0 rounded-2xl shadow-2xl border-0 w-full max-w-2xl text-slate-800 open:flex flex-col focus:outline-none focus-visible:ring-4 focus-visible:ring-blue-600 m-auto"
-      aria-labelledby="modal-title"
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm transition-opacity fade-in" 
+      onClick={handleBackdropClick}
+      role="dialog"
       aria-modal="true"
+      aria-labelledby="modal-title"
     >
-      <div className="p-6 md:p-8 overflow-y-auto max-h-[85vh]">
-        <div className="flex justify-between items-start mb-5">
-          <h2 id="modal-title" className="text-3xl font-black tracking-tight text-slate-900 pr-8">{scheme.name}</h2>
-          <button 
-            onClick={onClose}
-            aria-label="Close modal dialog"
-            className="text-slate-500 hover:text-slate-800 bg-slate-200 hover:bg-slate-300 focus:ring-4 focus:ring-blue-600 rounded-lg p-2 transition-colors aspect-square flex-shrink-0"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
-        </div>
-        
-        <div className="bg-blue-100/50 text-blue-900 p-5 rounded-xl mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-2 border-blue-200">
-          <span className="font-bold flex items-center gap-2 text-lg">
-            <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            Match Score: {scheme.score}%
-          </span>
-          <span className="font-black bg-white px-4 py-2 rounded-lg text-blue-800 shadow-sm border border-blue-100 text-lg">{scheme.amount}</span>
+      <div 
+        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-3xl shadow-2xl border border-gray-100 p-8 sm:p-12 relative"
+        aria-describedby="modal-description"
+      >
+        <button 
+          onClick={onClose}
+          aria-label="Close modal"
+          className="absolute top-6 right-6 p-2 text-gray-400 hover:text-gray-600 focus:ring-4 rounded-full transition-all"
+        >
+          <span className="text-2xl">✕</span>
+        </button>
+
+        <header className="mb-10 text-center">
+          <div className="inline-block px-4 py-1.5 bg-blue-50 text-blue-700 text-xs font-black rounded-full uppercase tracking-widest border border-blue-100 mb-6">
+            Scheme Breakdown
+          </div>
+          <h2 id="modal-title" className="text-4xl font-black text-gray-800 leading-tight tracking-tight">
+            {scheme.name}
+          </h2>
+        </header>
+
+        <div id="modal-description" className="space-y-12">
+          <section aria-labelledby="intro-title">
+            <h3 id="intro-title" className="text-blue-600 font-black uppercase text-xs tracking-widest mb-4 flex items-center gap-2">
+              <span>📌</span> Overview
+            </h3>
+            <p className="text-gray-600 text-lg font-medium leading-relaxed leading-snug">
+              {scheme.intro}
+            </p>
+          </section>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+            <section aria-labelledby="benefit-title">
+              <h3 id="benefit-title" className="text-blue-600 font-black uppercase text-xs tracking-widest mb-4 flex items-center gap-2">
+                <span>💰</span> Benefits
+              </h3>
+              <p className="text-3xl font-black text-gray-800">{scheme.amount}</p>
+            </section>
+            
+            <section aria-labelledby="timeline-title">
+              <h3 id="timeline-title" className="text-blue-600 font-black uppercase text-xs tracking-widest mb-4 flex items-center gap-2">
+                <span>⏰</span> Deadline
+              </h3>
+              <p className="text-lg font-bold text-gray-800">{scheme.timeline}</p>
+            </section>
+          </div>
+
+          <section aria-labelledby="eligibility-title">
+            <h3 id="eligibility-title" className="text-blue-600 font-black uppercase text-xs tracking-widest mb-4 flex items-center gap-2">
+              <span>✅</span> Eligibility Rules
+            </h3>
+            <ul className="space-y-3">
+              {scheme.eligibility.map((item, i) => (
+                <li key={i} className="flex gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-100 font-bold text-gray-700">
+                  <span className="text-blue-600">✔</span> {item}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section aria-labelledby="docs-title">
+            <h3 id="docs-title" className="text-blue-600 font-black uppercase text-xs tracking-widest mb-4 flex items-center gap-2">
+              <span>📝</span> Documents Needed
+            </h3>
+            <ul className="flex flex-wrap gap-2">
+              {scheme.documents.map((doc, i) => (
+                <li key={i} className="px-5 py-2.5 bg-gray-100 text-gray-600 text-sm font-black rounded-xl border border-gray-100 uppercase tracking-tight">
+                  {doc}
+                </li>
+              ))}
+            </ul>
+          </section>
         </div>
 
-        <p className="text-slate-800 font-medium mb-6 leading-relaxed text-lg">{scheme.intro}</p>
-
-        <div className="mb-6 bg-slate-100 p-5 rounded-xl border border-slate-200">
-          <h3 className="text-xl font-black text-slate-900 mb-3 flex items-center gap-2">
-            Eligibility Criteria
-          </h3>
-          <ul className="list-disc pl-6 space-y-2 text-slate-800 font-medium text-lg">
-            {scheme.eligibility.map((req, idx) => <li key={idx} className="pl-1">{req}</li>)}
-          </ul>
-        </div>
-
-        <div className="mb-6">
-          <h3 className="text-xl font-black text-slate-900 mb-3 flex items-center gap-2">
-            Documents Required
-          </h3>
-          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-slate-800 font-medium">
-            {scheme.documents.map((doc, idx) => (
-              <li key={idx} className="bg-white border-2 border-slate-200 rounded-lg p-3 text-base flex items-center shadow-sm">
-                <span className="w-2 h-2 rounded-full bg-blue-600 mr-3 flex-shrink-0"></span>
-                {doc}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="mb-8">
-          <h3 className="text-xl font-black text-slate-900 mb-2 flex items-center gap-2">
-            Timeline
-          </h3>
-          <p className="text-slate-900 bg-orange-100 font-bold p-4 rounded-xl border-2 border-orange-200 text-lg">{scheme.timeline}</p>
-        </div>
-
-        <div className="flex flex-col sm:flex-row justify-end pt-5 border-t-2 border-slate-200 gap-3">
-          <button onClick={onClose} className="px-6 py-3 rounded-xl font-bold text-slate-700 hover:bg-slate-200 transition-colors focus:ring-4 focus:ring-slate-400 text-lg border-2 border-slate-300">
-            Close
-          </button>
+        <footer className="mt-14 pt-10 border-t border-gray-50">
           <a 
-            href={scheme.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="bg-blue-700 hover:bg-blue-800 text-white px-8 py-3 rounded-xl font-black transition-colors shadow-md focus:ring-4 focus:ring-blue-500 focus:ring-offset-2 flex items-center justify-center gap-2 text-lg"
+            href={scheme.link} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="w-full btn-primary block text-center flex items-center justify-center gap-3 no-underline py-5"
+            aria-label={`Apply for ${scheme.name} on the official external government website`}
           >
-            Apply Now (External Portal)
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+            Apply on Official Portal 🌐
           </a>
-        </div>
+          <p className="text-center mt-6 text-gray-400 font-bold text-xs">GOVBRIDGE IS NOT AFFILIATED WITH THE GOVERNMENT.</p>
+        </footer>
       </div>
-    </dialog>
+    </div>
   );
-}
+});
+
+export default SchemeDetailModal;

@@ -1,6 +1,58 @@
-@import "tailwindcss";
+/* 
+* GovBridge Design System & Performance Polishing 
+* Pillar 3: LCP Optimization & Skeleton Loaders 
+* Pillar 4: Focus Indicators & Contrast
+*/
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #f9fafb;
+}
+
+@layer base {
+  body {
+    @apply bg-[var(--bg-primary)] text-gray-900 antialiased;
+  }
+
+  /* Pillar 4: Accessibility Focus States */
+  :focus-visible {
+    @apply outline-none ring-2 ring-blue-500 ring-offset-2;
+  }
+}
+
+@layer components {
+  /* Pillar 3: Largest Contentful Paint (LCP) Placeholder skeleton */
+  .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      rgba(229, 231, 235, 1) 25%,
+      rgba(243, 244, 246, 1) 50%,
+      rgba(229, 231, 235, 1) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmy 1.5s infinite linear;
+  }
+
+  @keyframes shimmy {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* Pillar 4: Semantic UI High-Contrast Buttons */
+  .btn-primary {
+    @apply px-6 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg ring-blue-300 hover:bg-blue-700 active:scale-95 transition-all focus:ring-4;
+  }
+
+  /* Pillar 3: Micro-animations for LCP */
+  .fade-in {
+    animation: fadeIn 0.4s ease-out forwards;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 }

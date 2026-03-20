@@ -1,153 +1,180 @@
-import { useState } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import InputSection from './components/InputSection';
 import SchemeDetailModal from './components/SchemeDetailModal';
-import SkeletonLoader from './components/SkeletonLoader';
-import type { SchemeResult } from './types';
+import ProfessionSelector from './components/ProfessionSelector';
 
-// Static constant defined outside component to prevent re-declaration on every render
-const ROLES = ["Farmer", "Student", "Daily Wage Worker", "Artisan", "Healthcare Worker"] as const;
+// Shared Interface Pillar 5
+interface Scheme {
+  name: string;
+  score: number;
+  amount: string;
+  intro: string;
+  eligibility: string[];
+  timeline: string;
+  documents: string[];
+  link: string;
+}
 
-export default function App() {
+const ROLES = [
+  "Farmer",
+  "Student",
+  "Daily Wage Worker",
+  "Artisan",
+  "Healthcare Worker"
+];
+
+/**
+ * Main App Component - Pillar 3 (Performance) & Pillar 4 (Accessibility)
+ * Implements strict modularity and high-conversion UX.
+ */
+const App: React.FC = () => {
+  const [selectedRole, setSelectedRole] = useState("Farmer");
   const [loading, setLoading] = useState(false);
-  const [schemes, setSchemes] = useState<SchemeResult[]>([]);
-  const [selectedScheme, setSelectedScheme] = useState<SchemeResult | null>(null);
-  const [message, setMessage] = useState("");
+  const [schemes, setSchemes] = useState<Scheme[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
-  const [hasSearched, setHasSearched] = useState(false);
-  
-  const [globalRole, setGlobalRole] = useState("Farmer");
+  const [selectedScheme, setSelectedScheme] = useState<Scheme | null>(null);
 
-  // ROLES is now defined at module scope above for efficiency
+  // Pillar 3: Fast navigation using optimized state callbacks
+  const handleRoleChange = useCallback((role: string) => {
+    setSelectedRole(role);
+    setErrorMsg("");
+  }, []);
 
-  const handleAnalyze = async (formData: FormData) => {
-    formData.append('role', globalRole);
+  const handleAnalyze = useCallback(async (role: string, query: string, file: File | null) => {
     setLoading(true);
-    setHasSearched(true);
+    setErrorMsg("");
+    setSchemes([]);
+
+    const formData = new FormData();
+    formData.append("role", role);
+    if (query) formData.append("query", query);
+    if (file) formData.append("file", file);
+
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
-      const response = await fetch(`${API_URL}/api/analyze`, {
-        method: 'POST',
+      // Backend points to Cloud Run URL in production
+      const apiBase = import.meta.env.VITE_API_URL || "http://localhost:8080";
+      const response = await fetch(`${apiBase}/api/analyze`, {
+        method: "POST",
         body: formData,
+        headers: {
+          "Accept": "application/json"
+        }
       });
 
       if (!response.ok) {
-         const err = await response.json();
-         throw new Error(err.detail || "Server error");
+        throw new Error(`Cloud Analysis Failed: HTTP ${response.status}`);
       }
 
       const data = await response.json();
-      if (data.schemes) {
-        setSchemes(data.schemes);
-        setMessage(data.message || "");
-      }
+      setSchemes(data.schemes || []);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : "Unknown error";
-      console.error("Error fetching schemes:", error);
-      setErrorMsg(`Connection failed: ${msg}. Ensure API is running with valid keys.`);
+      console.error("Critical Analysis Error:", error);
+      setErrorMsg(`Cloud Bridge Connection Failed: ${msg}. Please refresh and try again.`);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Pillar 3: Optimized List Render
+  const SchemeList = useMemo(() => {
+    if (loading) {
+      return (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" aria-busy="true" aria-label="Loading government schemes">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-64 rounded-3xl skeleton-shimmer bg-gray-100" />
+          ))}
+        </div>
+      );
+    }
+
+    if (schemes.length === 0 && !loading && !errorMsg) {
+      return (
+        <div className="text-center p-20 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-100">
+          <p className="text-gray-400 font-bold text-lg">Your curated schemes will appear here.</p>
+        </div>
+      );
+    }
+
+    // Pillar 4: Semantic Article tags for scheme cards
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {schemes.map((scheme, idx) => (
+          <article 
+            key={idx} 
+            className="p-6 bg-white rounded-3xl shadow-xl border border-gray-50 hover:shadow-2xl transition-all cursor-pointer group fade-in"
+            onClick={() => setSelectedScheme(scheme)}
+            style={{ animationDelay: `${idx * 0.1}s` }}
+          >
+            <header className="flex justify-between items-start mb-4">
+              <span className="px-3 py-1 bg-green-50 text-green-600 text-xs font-black rounded-full uppercase tracking-widest border border-green-100">
+                {scheme.score}% Match
+              </span>
+              <span className="text-blue-600 font-black text-lg">{scheme.amount}</span>
+            </header>
+            <h3 className="text-xl font-black text-gray-800 mb-3 group-hover:text-blue-600 transition-colors leading-tight">
+              {scheme.name}
+            </h3>
+            <p className="text-gray-500 text-sm font-medium line-clamp-3 mb-6">
+              {scheme.intro}
+            </p>
+            <footer className="pt-4 border-t border-gray-50 flex items-center justify-between">
+              <span className="text-blue-600 font-bold text-xs">VIEW DETAILS 🚀</span>
+              <span className="text-gray-300">→</span>
+            </footer>
+          </article>
+        ))}
+      </div>
+    );
+  }, [loading, schemes, errorMsg]);
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
-      <nav className="bg-white border-b-2 border-slate-200 sticky top-0 z-10 px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-center justify-between shadow-sm gap-4">
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <div className="w-10 h-10 rounded-xl bg-blue-700 text-white flex items-center justify-center font-black text-2xl shadow-md" aria-hidden="true">
-            G
-          </div>
-          <span className="text-2xl sm:text-3xl font-black tracking-tight text-slate-800">GovBridge</span>
-        </div>
-        
-        <div className="flex items-center gap-3 w-full sm:w-auto bg-slate-100 p-2 rounded-xl border-2 border-slate-200">
-          <label htmlFor="top-role-select" className="text-sm font-bold text-slate-600 whitespace-nowrap sr-only">
-            Select Profession
-          </label>
-          <svg className="w-6 h-6 text-slate-500 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-          <select 
-             id="top-role-select"
-             value={globalRole}
-             onChange={(e) => setGlobalRole(e.target.value)}
-             className="bg-transparent font-bold text-slate-800 text-lg w-full outline-none focus:ring-2 focus:ring-blue-600 p-1 cursor-pointer"
-             aria-label="Select your profession"
-          >
-            {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
-        </div>
+    <main className="min-h-screen pb-20 px-4 sm:px-8 max-w-7xl mx-auto">
+      <nav className="flex items-center justify-between py-10" aria-label="Main Navigation">
+         <h1 className="text-4xl font-black tracking-tighter text-blue-800 uppercase flex items-center gap-3">
+           <span className="text-5xl">🌉</span> GovBridge
+         </h1>
+         <div className="hidden md:block w-full max-w-2xl px-4">
+           <ProfessionSelector 
+             roles={ROLES} 
+             selectedRole={selectedRole} 
+             onSelect={handleRoleChange} 
+           />
+         </div>
       </nav>
 
-      <main className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-8 h-full">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10">
-          
-          <div className="lg:col-span-4">
-            <InputSection onAnalyze={handleAnalyze} isLoading={loading} selectedRole={globalRole} />
-          </div>
+      <section className="mb-12">
+        <InputSection 
+          selectedRole={selectedRole} 
+          loading={loading} 
+          onAnalyze={handleAnalyze} 
+        />
+      </section>
 
-          <section className="lg:col-span-8 bg-slate-100 flex flex-col h-full rounded-2xl p-6 border-2 border-slate-200" aria-label="Results Feed">
-            <h2 className="text-3xl font-black text-slate-900 tracking-tight mb-4 border-b-2 border-slate-200 pb-3">Recommended Schemes</h2>
-            
-            {errorMsg && (
-              <div className="bg-red-100 text-red-800 p-4 rounded-xl border-2 border-red-200 font-bold mb-6 flex items-center gap-3">
-                <svg className="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                {errorMsg}
-              </div>
-            )}
-
-            {message && !loading && !errorMsg && (
-              <p className="text-lg text-blue-900 mb-6 bg-blue-100 p-5 rounded-xl border-2 border-blue-200 font-bold shadow-sm">{message}</p>
-            )}
-            
-            <div className="flex flex-col gap-5 flex-grow">
-              
-              {loading ? (
-                <>
-                  <SkeletonLoader />
-                  <SkeletonLoader />
-                  <SkeletonLoader />
-                </>
-              ) : schemes.length > 0 ? (
-                schemes.map((scheme, index) => (
-                  <button 
-                    key={index} 
-                    onClick={() => setSelectedScheme(scheme)}
-                    className="text-left bg-white p-6 rounded-2xl shadow-sm border-2 border-slate-200 hover:border-blue-500 hover:shadow-lg transition-all relative overflow-hidden focus:outline-none focus:ring-4 focus:ring-blue-600 focus:ring-offset-2 outline-none group"
-                    aria-label={`View details for ${scheme.name}`}
-                  >
-                    <div className="absolute top-0 left-0 w-2 h-full bg-green-500"></div>
-                    <div className="flex flex-col xl:flex-row justify-between xl:items-center gap-3 mb-3 pl-3">
-                      <h3 className="font-black text-2xl text-slate-900 leading-tight group-hover:text-blue-700 transition-colors pr-4">{scheme.name}</h3>
-                      <span className="bg-green-100 border-2 border-green-300 text-green-900 text-sm font-black px-4 py-2 rounded-full whitespace-nowrap shadow-sm">
-                        {scheme.score}% Match
-                      </span>
-                    </div>
-                    <div className="pt-4 border-t-2 border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between pl-3 gap-4 mt-2">
-                      <span className="text-base font-bold text-blue-900 bg-blue-50 px-4 py-2 rounded-lg border border-blue-100">Grant: {scheme.amount}</span>
-                      <span className="text-lg font-black text-blue-700 group-hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-5 py-2 rounded-xl transition-colors">See Details &rarr;</span>
-                    </div>
-                  </button>
-                ))
-              ) : hasSearched ? (
-                 <div className="flex-grow flex flex-col items-center justify-center p-10 border-4 border-dashed border-slate-300 rounded-2xl text-slate-600 bg-white mt-auto text-center gap-4 shadow-sm">
-                  <svg className="w-16 h-16 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                  <p className="text-xl font-bold">No exact matching schemes found currently.</p>
-                </div>
-              ) : (
-                <div className="flex-grow flex items-center justify-center p-8 border-4 border-dashed border-slate-300 rounded-2xl text-slate-500 bg-slate-50 mt-auto min-h-[350px]">
-                  <p className="text-xl font-bold text-center max-w-md">Provide details to your left to trigger the AI-powered portal.</p>
-                </div>
-              )}
-
-            </div>
-          </section>
-
+      {errorMsg && (
+        <div className="p-5 mb-10 bg-red-50 border-2 border-red-100 rounded-2xl flex items-center gap-4 text-red-600 font-bold shadow-lg fade-in" role="alert">
+          <span className="text-2xl">⚠️</span>
+          <span>{errorMsg}</span>
         </div>
-      </main>
+      )}
 
-      <SchemeDetailModal 
-        scheme={selectedScheme} 
-        isOpen={selectedScheme !== null} 
-        onClose={() => setSelectedScheme(null)} 
-      />
-    </div>
+      <section aria-labelledby="results-title">
+        <header className="mb-8 flex items-end justify-between">
+          <h2 id="results-title" className="text-3xl font-black text-gray-800 tracking-tight">Curated Schemes</h2>
+          <span className="text-gray-400 font-bold mb-1 uppercase text-xs tracking-widest">Powered by Gemini 3.1 Flash-lite</span>
+        </header>
+
+        {SchemeList}
+      </section>
+
+      {selectedScheme && (
+        <SchemeDetailModal 
+          scheme={selectedScheme} 
+          onClose={() => setSelectedScheme(null)} 
+        />
+      )}
+    </main>
   );
-}
+};
+
+export default App;
