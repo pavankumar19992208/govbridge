@@ -1,11 +1,16 @@
 import pytest
 from fastapi.testclient import TestClient
-from backend.main import app
-from unittest.mock import patch, AsyncMock
+try:
+    from main import app
+except ImportError:
+    from backend.main import app
+from unittest.mock import patch, AsyncMock, MagicMock
 import json
 import io
 
-client = TestClient(app)
+# Mock Cloud SDKs globally for test stability
+with patch("google.cloud.storage.Client"), patch("google.cloud.logging.Client"):
+    client = TestClient(app)
 
 def test_health_check_status_and_security_headers():
     response = client.get("/health")
@@ -24,7 +29,7 @@ def test_analyze_empty_payload_fails_gracefully():
     # Ensures it doesn't crash catastrophically but returns a handled REST code
     assert response.status_code in [400, 422, 500]
 
-@patch("backend.main.genai_client")
+@patch("main.genai_client")
 def test_analyze_mocked_success(mock_client):
     """Integrates Test Mocking explicitly intercepting genai client ensuring robust 200 checks independently."""
     mock_response = AsyncMock()
@@ -54,7 +59,7 @@ def test_analyze_mocked_success(mock_client):
     assert len(data.get("schemes", [])) == 1
     assert data["schemes"][0]["name"] == "GovBridge Mocked Subsidy Test"
 
-@patch("backend.main.genai_client")
+@patch("main.genai_client")
 def test_analyze_multipart_file_upload(mock_client):
     """Saturates coverage mapping the multi-part Form File upload execution branch explicitly."""
     mock_response = AsyncMock()

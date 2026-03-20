@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Install packages targeting accurate node module resolution
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm install --frozen-lockfile 2>/dev/null || npm install
 
 # Copy source code and build
 COPY . .
